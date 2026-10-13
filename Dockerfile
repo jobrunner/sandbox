@@ -7,11 +7,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       iptables ipset dnsutils jq curl ca-certificates git util-linux less ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
-# Unprivilegierter Nutzer; Verzeichnisse vorab anlegen, damit benannte
-# Volumes beim ersten Einhängen die richtigen Besitzrechte übernehmen.
-RUN useradd -m -s /bin/bash dev \
+# Unprivilegierter Nutzer mit UID/GID des Host-Nutzers. Auf Linux-Hosts
+# behalten eingehängte Dateien ihre numerischen Besitzer; nur bei gleicher UID
+# kann der Agent sie schreiben. sandbox.sh prüft das und nennt den Build-Befehl:
+#   docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t claude-agent .
+# Unter Docker Desktop (macOS, Windows) ist die UID egal, Standard 1000 genügt.
+ARG UID=1000
+ARG GID=1000
+LABEL sandbox.uid="${UID}" sandbox.gid="${GID}"
+
+# Verzeichnisse vorab anlegen, damit benannte Volumes beim ersten Einhängen
+# die richtigen Besitzrechte übernehmen. Gibt es die GID schon (z. B. 100
+# "users"), wird diese Gruppe verwendet.
+RUN getent group "${GID}" >/dev/null || groupadd -g "${GID}" dev \
+    && useradd -m -s /bin/bash -o -u "${UID}" -g "${GID}" dev \
     && mkdir -p /home/dev/.claude /home/dev/go /home/dev/.cache /workspace \
-    && chown -R dev:dev /home/dev /workspace
+    && chown -R "${UID}:${GID}" /home/dev /workspace
 
 ENV HOME=/home/dev \
     GOPATH=/home/dev/go \

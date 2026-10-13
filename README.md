@@ -2,7 +2,17 @@
 
 ## Bauen
 
+macOS/Windows (Docker Desktop):
+
     docker build -t claude-agent .
+
+Linux: Das Image muss die UID/GID deines Nutzers kennen, sonst kann der Agent die
+eingehängten Dateien nicht schreiben. `sandbox.sh` prüft das und nennt sonst den Befehl:
+
+    docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t claude-agent .
+
+Docker muss ohne `sudo` laufen (Nutzer in der Gruppe `docker`). Rootless Docker und
+Podman sind nicht getestet.
 
 ## Starten
 
@@ -72,7 +82,7 @@ Optionale Variablen:
 
 ## Grenzen
 
-- Der Container-Nutzer `dev` hat UID 1000. Unter Docker Desktop (macOS, Windows) spielt das keine Rolle. Auf einem Linux-Host mit anderer UID kann der Agent die eingehängten Dateien und das Token nicht schreiben bzw. lesen; dort das Image mit passender UID bauen oder rootless Docker verwenden.
+- Wird das Image auf Linux mit einer anderen UID neu gebaut, gehören vorhandene Volumes noch der alten UID: `docker volume rm claude-agent-home claude-agent-gopath claude-agent-cache` (Anmeldung danach neu).
 - DNS ist weiterhin offen wie ein Scheunentor, ergo sind Datenausflüsse über DNS-Anfragen möglich.
 - Ändern CDN-Adressen während einer langen Sitzung, knallts, weil die Firewall gerade nicht beweglich sein soll. Abhilfe: Container neu starten.
 - Volumes zurücksetzen: `docker volume rm claude-agent-home claude-agent-gopath claude-agent-cache`

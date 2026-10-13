@@ -150,6 +150,29 @@ if [[ -n "$RM_WT" ]]; then
 fi
 
 (( $# )) || usage
+
+# ---------------------------------------------------------------------------
+# Image und UID
+# ---------------------------------------------------------------------------
+IMAGE="${SANDBOX_IMAGE:-claude-agent}"
+BUILD_HINT="docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t $IMAGE ."
+docker image inspect "$IMAGE" >/dev/null 2>&1 || die "Image $IMAGE fehlt. Bauen mit: $BUILD_HINT"
+
+# Auf Linux-Hosts behalten eingehängte Dateien ihre numerischen Besitzer.
+# Der Agent kann sie nur schreiben (und das Token nur lesen), wenn "dev" im
+# Image dieselbe UID hat wie der Host-Nutzer. Docker Desktop gleicht das selbst aus.
+if [[ "$(uname -s)" == Linux ]]; then
+  (( $(id -u) != 0 )) || die "nicht als root starten; Docker ohne sudo nutzen (Nutzer in der Gruppe docker)"
+  img_uid="$(docker image inspect -f '{{index .Config.Labels "sandbox.uid"}}' "$IMAGE")"
+  img_gid="$(docker image inspect -f '{{index .Config.Labels "sandbox.gid"}}' "$IMAGE")"
+  if [[ "$img_uid" != "$(id -u)" || "$img_gid" != "$(id -g)" ]]; then
+    die "Image $IMAGE ist für UID:GID ${img_uid:-?}:${img_gid:-?} gebaut, du bist $(id -u):$(id -g).
+Neu bauen mit: $BUILD_HINT
+Danach die Volumes zurücksetzen, falls sie mit der alten UID angelegt wurden:
+docker volume rm claude-agent-home claude-agent-gopath claude-agent-cache"
+  fi
+fi
+
 DIR="$(cd "$1" 2>/dev/null && pwd -P)" || die "Verzeichnis nicht gefunden: $1"
 shift
 
@@ -318,7 +341,7 @@ docker run --rm -it \
   -e GIT_COMMITTER_NAME="$GIT_NAME" \
   -e GIT_COMMITTER_EMAIL="$GIT_MAIL" \
   -e FW_EXTRA_ALLOWED_DOMAINS \
-  claude-agent "$@" || status=$?
+  "$IMAGE" "$@" || status=$?
 
 if [[ -n "$IS_WORKTREE" ]]; then
   say "Worktree bleibt stehen: $DIR"

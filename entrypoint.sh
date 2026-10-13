@@ -5,5 +5,5 @@ set -euo pipefail
 
 # Zu "dev" wechseln, alle Capabilities verwerfen, keine Rechteausweitung mehr.
 # Der Agent kann die Firewall danach nicht mehr ändern.
-exec setpriv --reuid=dev --regid=dev --init-groups \
+exec setpriv --reuid=dev --regid="$(id -g dev)" --init-groups \
      --inh-caps=-all --bounding-set=-all --no-new-privs -- "$@"
