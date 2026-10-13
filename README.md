@@ -11,8 +11,8 @@ Mit GitHub App (empfohlen, siehe unten):
     ./sandbox.sh ~/src/working-dir
     ./sandbox.sh ~/src/working-dir claude --dangerously-skip-permissions
 
-Ohne GitHub App mit Fine-grained Token, nur für das eine Repo (läuft nicht ab,
-muss aber von Hand erstellt und widerrufen werden):
+Ohne GitHub App mit Fine-grained Token, nur für das eine Repo. Laufzeit, Erneuerung
+und Widerruf verwaltest du dann selbst auf GitHub:
 
     export GH_TOKEN=github_pat_...
     ./sandbox.sh ~/src/working-dir
@@ -22,11 +22,11 @@ muss aber von Hand erstellt und widerrufen werden):
 ## Worktrees: eine Aufgabe, ein Verzeichnis
 
     ./sandbox.sh -b fix/login ~/src/working-dir      # oder --branch fix/login
-    ./sandbox.sh ~/src/working-dir-wt/fix-login      # bestehenden Worktree weiterverwenden
+    ./sandbox.sh ~/src/working-dir-wt/fix/login      # bestehenden Worktree weiterverwenden
     ./sandbox.sh --rm-wt ~/src/working-dir           # Worktrees auswählen und entfernen
-    ./sandbox.sh --rm-wt=fix-login ~/src/working-dir
+    ./sandbox.sh --rm-wt=fix/login ~/src/working-dir
 
-- Mit `-b` legt die Sandbox ohne Rückfrage den Worktree `~/src/working-dir-wt/fix-login`
+- Mit `-b` legt die Sandbox ohne Rückfrage den Worktree `~/src/working-dir-wt/fix/login`
   auf dem Branch `fix/login` an (neu von `origin/main`, oder der vorhandene lokale bzw.
   entfernte Branch). Gibt es ihn schon, wird er wiederverwendet.
 - Ohne `-b` fragt die Sandbox beim Hauptrepo nach einem Branch; leere Eingabe heißt:
@@ -67,10 +67,12 @@ Optionale Variablen:
 - Ausgehende Requests lässt die Firewall zusätzlich via Port 443 durch, wenn sie beim Container-Start in `FW_EXTRA_ALLOWED_DOMAINS` im Env stehen.
 - Der Agent läuft als "dev" ohne Capabilities und kann die Firewall nicht ändern.
 - Git nur per HTTPS mit Token, keine SSH-Schlüssel im Container.
-- Der private Schlüssel der Github-App bleibt auf dem Host, wo auch der Token erzeugt wird, der nach einer Stunde für dieses Repo verfällt. `sandbox.sh` erneuert das Token alle 30m im Hintergrund.
+- Der private Schlüssel der GitHub App bleibt auf dem Host, wo auch das Token erzeugt wird, das nach einer Stunde für dieses Repo verfällt. `sandbox.sh` erneuert das Token alle 30 Minuten im Hintergrund.
+- Der Credential-Helper gibt das Token nur für `https://github.com` heraus, nie an andere Hosts.
 
-## Foo
+## Grenzen
 
+- Der Container-Nutzer `dev` hat UID 1000. Unter Docker Desktop (macOS, Windows) spielt das keine Rolle. Auf einem Linux-Host mit anderer UID kann der Agent die eingehängten Dateien und das Token nicht schreiben bzw. lesen; dort das Image mit passender UID bauen oder rootless Docker verwenden.
 - DNS ist weiterhin offen wie ein Scheunentor, ergo sind Datenausflüsse über DNS-Anfragen möglich.
 - Ändern CDN-Adressen während einer langen Sitzung, knallts, weil die Firewall gerade nicht beweglich sein soll. Abhilfe: Container neu starten.
 - Volumes zurücksetzen: `docker volume rm claude-agent-home claude-agent-gopath claude-agent-cache`

@@ -7,7 +7,8 @@
 #   - ein Verzeichnis ohne Repo: wird mit "git init" angelegt
 #   - ein Worktree: wird direkt verwendet
 #   - das Hauptrepo: mit -b/--branch wird ohne Rückfrage ein Worktree unter
-#     <repo>-wt/<branch> angelegt oder wiederverwendet, ohne -b wird gefragt
+#     <repo>-wt/<branch> angelegt oder wiederverwendet (fix/login wird zu
+#     <repo>-wt/fix/login), ohne -b wird gefragt
 #     (leere Eingabe = direkt im Hauptrepo arbeiten)
 #
 # Autonomer Modus: ./sandbox.sh -b fix/login ~/src/hostus claude --dangerously-skip-permissions
@@ -27,6 +28,14 @@ confirm() {
   local answer
   read -r -p "$1 [j/N] " answer </dev/tty || return 1
   [[ "$answer" =~ ^[jJyY]$ ]]
+}
+
+# Name eines Worktrees: der Pfad unterhalb von <repo>-wt/, sonst der Ordnername.
+# Weil Git keine Branches "a" und "a/b" nebeneinander erlaubt, ist
+# <repo>-wt/<branch> eindeutig, anders als ein Ersetzen von "/" durch "-".
+wt_name() {
+  local wt="$1" main="$2"
+  if [[ "$wt" == "$main-wt/"* ]]; then echo "${wt#"$main-wt/"}"; else basename "$wt"; fi
 }
 
 # Wurzel des Hauptrepos, abgeleitet vom gemeinsamen Git-Verzeichnis.
@@ -60,7 +69,7 @@ remove_worktrees() {
   local e
   if [[ -n "$name" ]]; then
     for e in "${entries[@]}"; do
-      if [[ "$(basename "${e%%$'\t'*}")" == "$name" || "${e#*$'\t'}" == "$name" ]]; then
+      if [[ "$(wt_name "${e%%$'\t'*}" "$main")" == "$name" || "${e#*$'\t'}" == "$name" ]]; then
         selected+=("$e")
       fi
     done
@@ -104,6 +113,9 @@ remove_worktrees() {
     fi
     git -C "$main" worktree remove "${force[@]}" "$wt"
     echo "entfernt: $wt"
+    # Leere Zwischenordner von Branches wie fix/login aufräumen.
+    local parent; parent="$(dirname "$wt")"
+    while [[ "$parent" == "$main-wt/"* ]] && rmdir "$parent" 2>/dev/null; do parent="$(dirname "$parent")"; done
     if [[ "$branch" != "(detached)" ]]; then
       if git -C "$main" branch -d "$branch" >/dev/null 2>&1; then
         echo "Branch $branch gelöscht"
@@ -174,7 +186,7 @@ else
       say "Branch $BRANCH ist bereits ausgecheckt in $existing"
       DIR="$existing"
     else
-      WT="$(dirname "$DIR")/$(basename "$DIR")-wt/${BRANCH//\//-}"
+      WT="$DIR-wt/$BRANCH"
       [[ -e "$WT" ]] && die "$WT existiert bereits, ist aber kein Worktree für $BRANCH"
       if git -C "$DIR" show-ref --verify -q "refs/heads/$BRANCH"; then
         git -C "$DIR" worktree add "$WT" "$BRANCH"
@@ -215,7 +227,7 @@ if [[ -n "$SAME_PATH" ]]; then
   WORKDIR="$DIR"
   CONTAINER_GIT="$COMMON"
   MOUNTS=(-v "$DIR":"$DIR" -v "$COMMON":"$COMMON")
-  CONTAINER_NAME="agent-$REPO_NAME-$(basename "$DIR")"
+  CONTAINER_NAME="agent-$REPO_NAME-$(wt_name "$DIR" "$MAIN" | tr '/' '_')"
 else
   WORKDIR=/workspace
   CONTAINER_GIT=/workspace/.git
@@ -230,8 +242,9 @@ CONTAINER_NAME="$(printf '%s' "$CONTAINER_NAME" | tr -c 'A-Za-z0-9_.-' '-')"
 # ---------------------------------------------------------------------------
 # Repo-Name aus origin, falls das auf GitHub zeigt. GH_REPO überschreibt ihn.
 ORIGIN_URL="$(git -C "$DIR" remote get-url origin 2>/dev/null || true)"
-if [[ -z "${GH_REPO:-}" && "$ORIGIN_URL" =~ github\.com[:/]+[^/]+/([^/]+)$ ]]; then
-  GH_REPO="${BASH_REMATCH[1]%.git}"
+GITHUB_URL_RE='^(https://([^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)[^/]+/([^/]+)$'
+if [[ -z "${GH_REPO:-}" && "$ORIGIN_URL" =~ $GITHUB_URL_RE ]]; then
+  GH_REPO="${BASH_REMATCH[3]%.git}"
 fi
 
 # Mit GitHub App: kurzlebiges Token nur für dieses Repo erzeugen.
@@ -309,6 +322,6 @@ docker run --rm -it \
 
 if [[ -n "$IS_WORKTREE" ]]; then
   say "Worktree bleibt stehen: $DIR"
-  say "Entfernen mit: $0 --rm-wt=$(basename "$DIR") $MAIN"
+  say "Entfernen mit: $0 --rm-wt=$(wt_name "$DIR" "$MAIN") $MAIN"
 fi
 exit "$status"

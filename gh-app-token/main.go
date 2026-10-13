@@ -28,15 +28,19 @@ func main() {
 	if *appID == "" || *keyPath == "" || *instID == "" {
 		fail("GH_APP_ID, GH_APP_KEY und GH_APP_INSTALLATION_ID müssen gesetzt sein")
 	}
+	// Ohne Repo gälte das Token für alle Repos der Installation.
+	if *repo == "" {
+		fail("-repo muss gesetzt sein")
+	}
 
 	jwtToken, err := appJWT(*appID, *keyPath)
 	if err != nil {
 		fail("JWT erzeugen: %v", err)
 	}
 
-	body := map[string]any{"permissions": parsePerms(*perms)}
-	if *repo != "" {
-		body["repositories"] = []string{*repo}
+	body := map[string]any{
+		"permissions":  parsePerms(*perms),
+		"repositories": []string{*repo},
 	}
 	token, expires, err := installationToken(jwtToken, *instID, body)
 	if err != nil {
@@ -81,7 +85,9 @@ func installationToken(jwtToken, instID string, body map[string]any) (string, ti
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Ohne Timeout könnte ein hängender Request Start und Erneuerung blockieren.
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", time.Time{}, err
 	}
