@@ -1,0 +1,9 @@
+.DS_Store
+.envrc
+
+
+# Build-Ergebnis von "go build" in gh-app-token/
+/gh-app-token/gh-app-token
+
+# Private Schlüssel der GitHub App gehören nie ins Repo
+*.pem
